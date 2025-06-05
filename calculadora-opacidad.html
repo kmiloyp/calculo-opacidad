@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Opacidad - Tinta Blanca Flexografía</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React 18 UMD -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel Standalone -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Recharts -->
+    <script src="https://unpkg.com/recharts@2.8.0/umd/Recharts.js"></script>
+    
+    <!-- jsPDF + autoTable -->
+    <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/jspdf-autotable@3.5.23/dist/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="root">
+        <div class="text-center py-8">
+            <p>Cargando calculadora de opacidad...</p>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        function OpacityCalcApp() {
+            const [samples, setSamples] = useState([]);
+            const [currentSample, setCurrentSample] = useState({
+                name: '',
+                aniloxRef: '',
+                substrate: '',
+                inkBatch: '',
+                blackReadings: Array(10).fill(''),
+                whiteReadings: Array(10).fill('')
+            });
+            const [companyInfo, setCompanyInfo] = useState({
+                name: 'Tu Empresa',
+                analyst: '',
+                location: '',
+                equipment: '',
+                department: '',
+                project: ''
+            });
+            const [analystNotes, setAnalystNotes] = useState('');
+
+            // Función para clasificar opacidad
+            const classifyOpacity = (opacity) => {
+                if (opacity >= 65) return { level: 'EXCELENTE', color: 'green', action: 'Cumple aplicaciones premium, matearrollo OK' };
+                if (opacity >= 55) return { level: 'ACEPTABLE', color: 'blue', action: 'Adecuado para la mayoría de empaques; optimizar si se requiere máxima viveza' };
+                if (opacity >= 45) return { level: 'BAJA', color: 'yellow', action: 'Revisar: BCM del anilox, viscosidad, formulación, presión de impresión' };
+                return { level: 'DEFICIENTE', color: 'red', action: 'Ajustar inmediatamente proceso; posible rechazo de producción' };
+            };
+
+            // Calcular reflectancia y opacidad
+            const calculateOpacity = (blackReadings, whiteReadings) => {
+                const validBlack = blackReadings.filter(r => r !== '' && !isNaN(r)).map(Number);
+                const validWhite = whiteReadings.filter(r => r !== '' && !isNaN(r)).map(Number);
+                
+                if (validBlack.length === 0 || validWhite.length === 0) return null;
+
+                const avgBlack = validBlack.reduce((a, b) => a + b, 0) / validBlack.length;
+                const avgWhite = validWhite.reduce((a, b) => a + b, 0) / validWhite.length;
+                
+                const reflectanceBlack = Math.pow(10, -avgBlack);
+                const reflectanceWhite = Math.pow(10, -avgWhite);
+                
+                const opacity = ((reflectanceBlack - reflectanceWhite) / reflectanceBlack) * 100;
+                
+                return {
+                    avgBlack: avgBlack.toFixed(3),
+                    avgWhite: avgWhite.toFixed(3),
+                    reflectanceBlack: (reflectanceBlack * 100).toFixed(2),
+                    reflectanceWhite: (reflectanceWhite * 100).toFixed(2),
+                    opacity: opacity.toFixed(1),
+                    validReadings: validBlack.length
+                };
+            };
+
+            const handleInputChange = (type, index, value) => {
+                setCurrentSample(prev => ({
+                    ...prev,
+                    [type]: prev[type].map((item, i) => i === index ? value : item)
+                }));
+            };
+
+            const addSample = () => {
+                if (!currentSample.name.trim()) {
+                    alert('Por favor, ingresa un nombre para la muestra');
+                    return;
+                }
+
+                const result = calculateOpacity(currentSample.blackReadings, currentSample.whiteReadings);
+                if (!result) {
+                    alert('Por favor, ingresa al menos una lectura válida en cada fondo');
+                    return;
+                }
+
+                const newSample = {
+                    ...currentSample,
+                    id: Date.now(),
+                    results: result,
+                    timestamp: new Date().toLocaleString('es-ES')
+                };
+
+                setSamples(prev => [...prev, newSample]);
+                setCurrentSample({
+                    name: '',
+                    aniloxRef: '',
+                    substrate: '',
+                    inkBatch: '',
+                    blackReadings: Array(10).fill(''),
+                    whiteReadings: Array(10).fill('')
+                });
+            };
+
+            const removeSample = (id) => {
+                setSamples(prev => prev.filter(sample => sample.id !== id));
+            };
+
+            const generatePDF = () => {
+                if (samples.length === 0) {
+                    alert('No hay muestras para exportar');
+                    return;
+                }
+
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
+                    let currentY = 25;
+
+                    const primaryColor = [41, 128, 185];
+                    const secondaryColor = [52, 73, 94];
+
+                    // Header
+                    doc.setFontSize(20);
+                    doc.setTextColor(...primaryColor);
+                    doc.text('REPORTE DE ANÁLISIS DE OPACIDAD', 20, currentY);
+                    
+                    doc.setFontSize(14);
+                    doc.setTextColor(...secondaryColor);
+                    doc.text('Tinta Blanca para Flexografía', 20, currentY + 10);
+
+                    currentY += 30;
+
+                    // Información del proyecto
+                    doc.setFontSize(12);
+                    doc.setTextColor(...primaryColor);
+                    doc.text('INFORMACIÓN DEL PROYECTO', 20, currentY);
+                    currentY += 10;
+
+                    doc.setFontSize(10);
+                    doc.setTextColor(0, 0, 0);
+                    
+                    const projectInfo = [
+                        [`Empresa:`, companyInfo.name],
+                        [`Departamento:`, companyInfo.department || 'Control de Calidad'],
+                        [`Analista:`, companyInfo.analyst || 'No especificado'],
+                        [`Fecha:`, new Date().toLocaleDateString('es-ES')],
+                        [`Total de Muestras:`, samples.length.toString()]
+                    ];
+
+                    projectInfo.forEach((info, index) => {
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(info[0], 20, currentY + (index * 5));
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(info[1], 70, currentY + (index * 5));
+                    });
+
+                    currentY += (projectInfo.length * 5) + 15;
+
+                    // Tabla de resultados
+                    const tableData = samples.map(sample => {
+                        const opacity = parseFloat(sample.results.opacity);
+                        const classification = classifyOpacity(opacity);
+                        return [
+                            sample.name,
+                            sample.aniloxRef || 'N/A',
+                            sample.substrate || 'N/A',
+                            `${sample.results.opacity}%`,
+                            classification.level
+                        ];
+                    });
+
+                    doc.autoTable({
+                        head: [['Muestra', 'Anilox', 'Sustrato', 'Opacidad', 'Clasificación']],
+                        body: tableData,
+                        startY: currentY,
+                        headStyles: { fillColor: primaryColor, textColor: 255 },
+                        bodyStyles: { fontSize: 9 }
+                    });
+
+                    // Observaciones del analista
+                    if (analystNotes.trim()) {
+                        currentY = doc.lastAutoTable.finalY + 15;
+                        doc.setFontSize(12);
+                        doc.setTextColor(...primaryColor);
+                        doc.text('OBSERVACIONES DEL ANALISTA', 20, currentY);
+                        currentY += 8;
+
+                        doc.setFontSize(10);
+                        doc.setTextColor(0, 0, 0);
+                        const notesLines = doc.splitTextToSize(analystNotes, 170);
+                        doc.text(notesLines, 20, currentY);
+                    }
+
+                    const fileName = `Reporte_Opacidad_${new Date().toISOString().split('T')[0]}.pdf`;
+                    doc.save(fileName);
+
+                } catch (error) {
+                    console.error('Error generando PDF:', error);
+                    alert('Error al generar el PDF');
+                }
+            };
+
+            return (
+                <div className="container mx-auto p-6 max-w-7xl">
+                    {/* Configuración */}
+                    <div className="grid md:grid-cols-2 gap-6 mb-6">
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Configuración de Empresa</h2>
+                            <div className="space-y-4">
+                                <input
+                                    type="text"
+                                    value={companyInfo.name}
+                                    onChange={(e) => setCompanyInfo(prev => ({...prev, name: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Nombre de la empresa"
+                                />
+                                <input
+                                    type="text"
+                                    value={companyInfo.department}
+                                    onChange={(e) => setCompanyInfo(prev => ({...prev, department: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Departamento"
+                                />
+                                <input
+                                    type="text"
+                                    value={companyInfo.analyst}
+                                    onChange={(e) => setCompanyInfo(prev => ({...prev, analyst: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Analista"
+                                />
+                                <input
+                                    type="text"
+                                    value={companyInfo.location}
+                                    onChange={(e) => setCompanyInfo(prev => ({...prev, location: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Ubicación"
+                                />
+                                <input
+                                    type="text"
+                                    value={companyInfo.equipment}
+                                    onChange={(e) => setCompanyInfo(prev => ({...prev, equipment: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Equipo"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-lg shadow-lg p-6">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Rangos de Clasificación</h2>
+                            <div className="space-y-2 text-sm mb-4">
+                                <div className="flex items-center">
+                                    <div className="w-4 h-4 bg-green-500 rounded mr-2"></div>
+                                    <span>Excelente: ≥ 65% - Aplicaciones premium</span>
+                                </div>
+                                <div className="flex items-center">
+                                    <div className="w-4 h-4 bg-blue-500 rounded mr-2"></div>
+                                    <span>Aceptable: 55% - 64% - Mayoría de empaques</span>
+                                </div>
+                                <div className="flex items-center">
+                                    <div className="w-4 h-4 bg-yellow-500 rounded mr-2"></div>
+                                    <span>Baja: 45% - 54% - Revisar proceso</span>
+                                </div>
+                                <div className="flex items-center">
+                                    <div className="w-4 h-4 bg-red-500 rounded mr-2"></div>
+                                    <span>Deficiente: &lt; 45% - Ajustar inmediatamente</span>
+                                </div>
+                            </div>
+                            
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Observaciones del Analista
+                            </label>
+                            <textarea
+                                value={analystNotes}
+                                onChange={(e) => setAnalystNotes(e.target.value)}
+                                className="w-full p-2 border rounded"
+                                rows="3"
+                                placeholder="Escribe tus observaciones..."
+                            />
+                        </div>
+                    </div>
+
+                    {/* Calculadora principal */}
+                    <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                        <h1 className="text-3xl font-bold text-gray-800 mb-6">
+                            Calculadora de Opacidad - Tinta Blanca Flexografía
+                        </h1>
+
+                        {/* Datos de la muestra */}
+                        <div className="grid md:grid-cols-4 gap-4 mb-6">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Nombre de la muestra *</label>
+                                <input
+                                    type="text"
+                                    value={currentSample.name}
+                                    onChange={(e) => setCurrentSample(prev => ({...prev, name: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Ej: Muestra A"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Referencia Anilox</label>
+                                <input
+                                    type="text"
+                                    value={currentSample.aniloxRef}
+                                    onChange={(e) => setCurrentSample(prev => ({...prev, aniloxRef: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Ej: ANX-400-15"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Sustrato</label>
+                                <input
+                                    type="text"
+                                    value={currentSample.substrate}
+                                    onChange={(e) => setCurrentSample(prev => ({...prev, substrate: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Ej: Cartón, PE"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Lote de Tinta</label>
+                                <input
+                                    type="text"
+                                    value={currentSample.inkBatch}
+                                    onChange={(e) => setCurrentSample(prev => ({...prev, inkBatch: e.target.value}))}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Ej: TB-2024-001"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Lecturas de densidad */}
+                        <div className="grid md:grid-cols-2 gap-6">
+                            {/* Fondo Negro */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                                    Lecturas sobre Fondo Negro
+                                </h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {currentSample.blackReadings.map((reading, index) => (
+                                        <div key={index}>
+                                            <label className="block text-xs text-gray-600 mb-1">
+                                                Lectura {index + 1}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.001"
+                                                value={reading}
+                                                onChange={(e) => handleInputChange('blackReadings', index, e.target.value)}
+                                                className="w-full p-2 text-sm border rounded"
+                                                placeholder="0.000"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Fondo Blanco */}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                                    Lecturas sobre Fondo Blanco
+                                </h3>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {currentSample.whiteReadings.map((reading, index) => (
+                                        <div key={index}>
+                                            <label className="block text-xs text-gray-600 mb-1">
+                                                Lectura {index + 1}
+                                            </label>
+                                            <input
+                                                type="number"
+                                                step="0.001"
+                                                value={reading}
+                                                onChange={(e) => handleInputChange('whiteReadings', index, e.target.value)}
+                                                className="w-full p-2 text-sm border rounded"
+                                                placeholder="0.000"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={addSample}
+                            className="mt-6 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+                        >
+                            Agregar Muestra
+                        </button>
+                    </div>
+
+                    {/* Tabla de resultados */}
+                    {samples.length > 0 && (
+                        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-2xl font-bold text-gray-800">Muestras Analizadas</h2>
+                                <button
+                                    onClick={generatePDF}
+                                    className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700"
+                                >
+                                    📄 Exportar PDF
+                                </button>
+                            </div>
+                            
+                            <div className="overflow-x-auto">
+                                <table className="w-full border-collapse border">
+                                    <thead>
+                                        <tr className="bg-gray-50">
+                                            <th className="border p-3 text-left">Muestra</th>
+                                            <th className="border p-3">Anilox</th>
+                                            <th className="border p-3">Sustrato</th>
+                                            <th className="border p-3">Opacidad (%)</th>
+                                            <th className="border p-3">Clasificación</th>
+                                            <th className="border p-3">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {samples.map((sample) => {
+                                            const opacity = parseFloat(sample.results.opacity);
+                                            const classification = classifyOpacity(opacity);
+                                            const colorClass = classification.color === 'green' ? 'bg-green-100 text-green-800' :
+                                                              classification.color === 'blue' ? 'bg-blue-100 text-blue-800' :
+                                                              classification.color === 'yellow' ? 'bg-yellow-100 text-yellow-800' :
+                                                              'bg-red-100 text-red-800';
+                                            
+                                            return (
+                                                <tr key={sample.id}>
+                                                    <td className="border p-3 font-medium">{sample.name}</td>
+                                                    <td className="border p-3 text-center">{sample.aniloxRef || 'N/A'}</td>
+                                                    <td className="border p-3 text-center">{sample.substrate || 'N/A'}</td>
+                                                    <td className="border p-3 text-center font-bold text-blue-600">
+                                                        {sample.results.opacity}%
+                                                    </td>
+                                                    <td className={`border p-3 text-center font-semibold ${colorClass}`}>
+                                                        {classification.level}
+                                                    </td>
+                                                    <td className="border p-3 text-center">
+                                                        <button
+                                                            onClick={() => removeSample(sample.id)}
+                                                            className="bg-red-500 text-white px-2 py-1 rounded text-sm hover:bg-red-600"
+                                                        >
+                                                            Eliminar
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Inicializar la aplicación
+        function initApp() {
+            try {
+                const root = ReactDOM.createRoot(document.getElementById('root'));
+                root.render(<OpacityCalcApp />);
+                console.log('✅ Aplicación cargada correctamente');
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('root').innerHTML = '<div class="p-8 text-center"><h2 class="text-red-600">Error al cargar la aplicación</h2><p>Recarga la página</p></div>';
+            }
+        }
+
+        // Esperar a que React se cargue
+        function waitForReact() {
+            if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined') {
+                initApp();
+            } else {
+                setTimeout(waitForReact, 100);
+            }
+        }
+
+        // Iniciar
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', waitForReact);
+        } else {
+            waitForReact();
+        }
+    </script>
+</body>
+</html>
